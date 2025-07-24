@@ -1,63 +1,43 @@
-from flask import Flask, render_template_string, request
+import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 import pytesseract
 import io
 import base64
 
-app = Flask(__name__)
+st.set_page_config(page_title="Bulk Size Chart Translator", layout="wide")
+st.title("📏 Bulk Size Chart Translator (Chinese to English)")
 
-HTML_TEMPLATE = '''
-<!doctype html>
-<title>Bulk Size Chart Translator</title>
-<h1>Upload Size Chart Images (Chinese)</h1>
-<form method=post enctype=multipart/form-data>
-  <input type=file name=files multiple>
-  <input type=submit value=Upload>
-</form>
-{% if results %}
-  {% for result in results %}
-    <h3>Original Image:</h3>
-    <img src="data:image/jpeg;base64,{{ result['original_base64'] }}" width="400">
-    <h3>Extracted Chinese Text:</h3>
-    <pre>{{ result['extracted_text'] }}</pre>
-    <h3>Translated Text (Placeholder):</h3>
-    <pre>{{ result['translated_text'] }}</pre>
-    <h3>Translated Image:</h3>
-    <img src="data:image/jpeg;base64,{{ result['translated_base64'] }}" width="400">
-    <hr>
-  {% endfor %}
-{% endif %}
-'''
+uploaded_files = st.file_uploader("Upload Size Chart Images (Chinese)", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
 
-def image_to_base64(img):
-    buf = io.BytesIO()
-    img.save(buf, format='JPEG')
-    return base64.b64encode(buf.getvalue()).decode()
+if uploaded_files:
+    for uploaded_file in uploaded_files:
+        st.subheader(f"📷 Original Image: {uploaded_file.name}")
+        image = Image.open(uploaded_file).convert('RGB')
+        st.image(image, width=400)
 
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    results = []
-    if request.method == 'POST':
-        files = request.files.getlist('files')
-        for file in files:
-            image = Image.open(file).convert('RGB')
-            extracted_text = pytesseract.image_to_string(image, lang='chi_sim')
-            translated_text = "[Manual translation required]"
+        # Extract text
+        extracted_text = pytesseract.image_to_string(image, lang='chi_sim')
+        st.markdown("**🈶 Extracted Chinese Text:**")
+        st.code(extracted_text)
 
-            # Draw translated text onto new image
-            new_img = Image.new('RGB', image.size, color='white')
-            draw = ImageDraw.Draw(new_img)
-            font = ImageFont.load_default()
-            draw.multiline_text((10, 10), translated_text, font=font, fill='black')
+        # Placeholder translation
+        translated_text = "[Translation unavailable in this environment. Please translate manually.]"
+        st.markdown("**🌐 Translated Text:**")
+        st.code(translated_text)
 
-            results.append({
-                'original_base64': image_to_base64(image),
-                'translated_base64': image_to_base64(new_img),
-                'extracted_text': extracted_text,
-                'translated_text': translated_text
-            })
+        # Render translation on image
+        new_img = Image.new('RGB', (image.width, image.height), color=(255, 255, 255))
+        draw = ImageDraw.Draw(new_img)
+        font = ImageFont.load_default()
+        draw.multiline_text((10, 10), translated_text, font=font, fill=(0, 0, 0))
 
-    return render_template_string(HTML_TEMPLATE, results=results)
+        st.markdown("**🖼️ Translated Image:**")
+        st.image(new_img, width=400)
 
-if __name__ == '__main__':
-    app.run(debug=False)
+        # JPEG Download
+        buffered = io.BytesIO()
+        new_img.save(buffered, format="JPEG")
+        img_bytes = buffered.getvalue()
+        b64 = base64.b64encode(img_bytes).decode()
+        href = f'<a href="data:image/jpeg;base64,{b64}" download="translated_{uploaded_file.name}">📥 Download Translated Image (JPEG)</a>'
+        st.markdown(href, unsafe_allow_html=True)
